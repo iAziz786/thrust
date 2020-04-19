@@ -70,6 +70,7 @@ type Value struct {
 
 func main() {
 	// lambda.Start(HandleRequest)
+	url := os.Args[3]
 	MAX, err := strconv.Atoi(os.Args[2])
 	if err != nil {
 		panic(err)
@@ -104,20 +105,24 @@ Outerloop:
 		default:
 			sem <- struct{}{} // will block if there is MAX ints in sem
 			go func() {
-				fmt.Println("request", value.value)
-				startTime := time.Now()
-				resp, err := http.Get("http://45.76.160.109/")
-				if err != nil {
-					<-sem
+				select {
+				case <-done:
 					return
+				default:
+					startTime := time.Now()
+					resp, err := http.Get(url)
+					if err != nil {
+						<-sem
+						return
+					}
+					value.lock.Lock()
+					value.value++
+					fmt.Printf("#%d Received\n", value.value)
+					value.latency += time.Since(startTime)
+					value.lock.Unlock()
+					resp.Body.Close()
+					<-sem // removes an int from sem, allowing another to proceed
 				}
-				value.lock.Lock()
-				value.value++
-				value.latency += time.Since(startTime)
-				value.lock.Unlock()
-				fmt.Println("receiving...")
-				resp.Body.Close()
-				<-sem // removes an int from sem, allowing another to proceed
 			}()
 		}
 	}
